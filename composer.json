@@ -1,0 +1,27 @@
+{
+    "name": "solarsuit/gitea_listener",
+    "description": "Listens to Gitea webhooks and creates updates in Leantime history.",
+    "version": "0.1",
+    "homepage": "https://github.com/ArseniiRudenko/GiteaListener",
+    "screenshot": "/images/screenshot.png",
+    "authors": [
+        {
+            "name": "Arsenii Rudenko",
+            "email": "arsenii@solarsuit.games"
+        }
+    ],
+    "type": "plugin",
+    "keywords": [
+        "",
+        ""
+    ],
+    "license": "Apache-2.0",
+    "require": {
+        "leantime/leantime": "3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Leantime\\Plugins\\GiteaListener\\": "/"
+        }
+    }
+}
