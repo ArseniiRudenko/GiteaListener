@@ -14,9 +14,9 @@
         <?php $configs = $tpl->get('giteaConfigs') ?? []; ?>
 
         <div style="margin-bottom: 20px;">
-            <a class="btn" href="/plugins/myapps">Back</a>
+            <a class="btn" href="/plugins/myapps"><span class="fa fa-arrow-left"></span></a>
         </div>
-        <h3 style="margin-bottom: 10px;">Saved webhook configurations</h3>
+        <h3 class="widgettitle title-light">Saved webhook configurations</h3>
 
         <?php if (count($configs) === 0): ?>
             <div class="well">No configurations saved yet.</div>
@@ -57,9 +57,9 @@
 
         <hr />
 
-        <h3 style="margin-bottom: 10px;">Add webhook configuration</h3>
+        <h3 class="widgettitle title-light">Add webhook configuration</h3>
 
-        <form method="post" action="/plugins/gitealistener/settings"  id="gitea-config-form">
+        <form method="post" action="/plugins/gitealistener/settings"  class="row-fluid" id="gitea-config-form">
             <div class="form-group">
                 <label class="control-label" for="repo-url">Repository URL</label>
                 <input type="url" name="repository_url" id="repo-url" class="form-control" placeholder="https://gitea.example.com/owner/repo" required />
