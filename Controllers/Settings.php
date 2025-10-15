@@ -1,7 +1,7 @@
 <?php
 
 namespace Leantime\Plugins\GiteaListener\Controllers;
-
+use Illuminate\Support\Facades\Log;
 use Leantime\Core\Controller\Controller;
 use Symfony\Component\HttpFoundation\Response;
 use Leantime\Plugins\GiteaListener\Repositories\GiteaListenerRepository;
@@ -35,6 +35,7 @@ class Settings extends Controller
         try {
             $configs = $this->repository->getAll();
         } catch (\Throwable $e) {
+            Log::error('Could not load Gitea Listener configurations: '.$e->getMessage());
             $this->tpl->setNotification('Could not load Gitea Listener configurations: '.$e->getMessage(), 'error');
         }
 
@@ -72,6 +73,7 @@ class Settings extends Controller
         try {
             $hookSecret = bin2hex(random_bytes(16));
         } catch (\Throwable $e) {
+            Log::warning('Could not generate random bytes for hook secret, falling back to uniqid: '.$e->getMessage());
             $hookSecret = uniqid('gitea_', true);
         }
 
@@ -92,6 +94,7 @@ class Settings extends Controller
                 $this->tpl->setNotification('Gitea listener configuration saved.', 'success', 'gitea_config_saved');
             }
         } catch (\Throwable $e) {
+            Log::error('Error saving Gitea Listener configuration: '.$e->getMessage());
             $this->tpl->setNotification('Error saving configuration: '.$e->getMessage(), 'error');
         }
 
@@ -105,10 +108,10 @@ class Settings extends Controller
     public function update(array $params): Response
     {
         $req = $this->incomingRequest->request;
-        $id = $req->get('id', null);
+        $id = $req->get('id');
         $branchFilter = trim((string)$req->get('branch_filter', ''));
 
-        if ($id === null || !is_numeric($id)) {
+        if (!is_numeric($id)) {
             return new Response(json_encode(['success' => false, 'message' => 'Invalid id']), 400, ['Content-Type' => 'application/json']);
         }
 
@@ -124,6 +127,7 @@ class Settings extends Controller
 
             return new Response(json_encode(['success' => false, 'message' => 'Update failed']), 500, ['Content-Type' => 'application/json']);
         } catch (\Throwable $e) {
+            Log::error('Failed to update Gitea Listener configuration: '.$e->getMessage());
             return new Response(json_encode(['success' => false, 'message' => 'Error: '.$e->getMessage()]), 500, ['Content-Type' => 'application/json']);
         }
     }
@@ -135,9 +139,9 @@ class Settings extends Controller
     public function delete(array $params): Response
     {
         $req = $this->incomingRequest->request;
-        $id = $req->get('id', null);
+        $id = $req->get('id');
 
-        if ($id === null || !is_numeric($id)) {
+        if (!is_numeric($id)) {
             return new Response(json_encode(['success' => false, 'message' => 'Invalid id']), 400, ['Content-Type' => 'application/json']);
         }
 
@@ -149,6 +153,7 @@ class Settings extends Controller
 
             return new Response(json_encode(['success' => false, 'message' => 'Delete failed']), 500, ['Content-Type' => 'application/json']);
         } catch (\Throwable $e) {
+            Log::error('Failed to delete Gitea Listener configuration: '.$e->getMessage());
             return new Response(json_encode(['success' => false, 'message' => 'Error: '.$e->getMessage()]), 500, ['Content-Type' => 'application/json']);
         }
     }
@@ -194,8 +199,6 @@ class Settings extends Controller
             'User-Agent: Leantime-GiteaListener/1.0',
         ];
 
-        $result = ['success' => false, 'message' => 'Connection failed'];
-
         if (function_exists('curl_version')) {
             $ch = curl_init($userApi);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -208,20 +211,7 @@ class Settings extends Controller
             $curlErr = curl_error($ch);
             curl_close($ch);
 
-            if ($resp === false) {
-                $result = ['success' => false, 'message' => 'Connection failed: '.$curlErr];
-            } else {
-                if ($httpCode >= 200 && $httpCode < 300) {
-                    $result = ['success' => true, 'message' => 'Connection successful'];
-                } else {
-                    $body = @json_decode($resp, true);
-                    $msg = 'API returned HTTP '.$httpCode;
-                    if (is_array($body) && isset($body['message'])) {
-                        $msg .= ': '.$body['message'];
-                    }
-                    $result = ['success' => false, 'message' => $msg];
-                }
-            }
+            $result = $this->processResult($resp, $curlErr, $httpCode);
         } else {
             // fallback
             $opts = [
@@ -244,23 +234,34 @@ class Settings extends Controller
                     }
                 }
             }
-
-            if ($resp === false) {
-                $result = ['success' => false, 'message' => 'Connection failed'];
-            } else {
-                if ($httpCode >= 200 && $httpCode < 300) {
-                    $result = ['success' => true, 'message' => 'Connection successful'];
-                } else {
-                    $body = @json_decode($resp, true);
-                    $msg = 'API returned HTTP '.$httpCode;
-                    if (is_array($body) && isset($body['message'])) {
-                        $msg .= ': '.$body['message'];
-                    }
-                    $result = ['success' => false, 'message' => $msg];
-                }
-            }
+            $result = $this->processResult($resp, null, $httpCode);
         }
 
         return new Response(json_encode($result), ($result['success'] ? 200 : 400), ['Content-Type' => 'application/json']);
+    }
+
+    /**
+     * @param bool|string $resp
+     * @param string $curlErr
+     * @param mixed $httpCode
+     * @return array
+     */
+    public function processResult(bool|string $resp, string $curlErr, mixed $httpCode): array
+    {
+        if ($resp === false) {
+            $result = ['success' => false, 'message' => 'Connection failed: ' . $curlErr];
+        } else {
+            if ($httpCode >= 200 && $httpCode < 300) {
+                $result = ['success' => true, 'message' => 'Connection successful'];
+            } else {
+                $body = @json_decode($resp, true);
+                $msg = 'API returned HTTP ' . $httpCode;
+                if (is_array($body) && isset($body['message'])) {
+                    $msg .= ': ' . $body['message'];
+                }
+                $result = ['success' => false, 'message' => $msg];
+            }
+        }
+        return $result;
     }
 }
