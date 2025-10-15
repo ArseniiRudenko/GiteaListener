@@ -12,12 +12,15 @@
     ],
     "type": "plugin",
     "keywords": [
-        "",
-        ""
+        "Gitea",
+        "Git",
+        "Webhook",
+        "Listener",
+        "Integration"
     ],
     "license": "Apache-2.0",
     "require": {
-        "leantime/leantime": "3.0"
+        "ext-curl": "*"
     },
     "autoload": {
         "psr-4": {
