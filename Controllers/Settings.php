@@ -69,7 +69,7 @@ class Settings extends Controller
             return Frontcontroller::redirect(BASE_URL.'/plugins/gitealistener/settings');
         }
 
-        // Implementation details: plugin manages hook_id/hook_secret. Keep them internal.
+        // Generate hook secret to use when creating the webhook
         try {
             $hookSecret = bin2hex(random_bytes(16));
         } catch (\Throwable $e) {
@@ -77,11 +77,88 @@ class Settings extends Controller
             $hookSecret = uniqid('gitea_', true);
         }
 
-        // Prepare data and save
+        // Prepare to call Gitea API to create webhook BEFORE saving to DB.
+        try {
+            $parsed = parse_url(rtrim($repositoryUrl, '/'));
+            if ($parsed === false || !isset($parsed['path'])) {
+                throw new \Exception('Cannot parse repository path');
+            }
+
+            // owner/repo from path
+            $path = ltrim($parsed['path'], '/');
+            $path = preg_replace('/\.git$/', '', $path);
+            $parts = explode('/', $path);
+            if (count($parts) < 2) {
+                throw new \Exception('Repository path must contain owner and repo');
+            }
+            $owner = $parts[0];
+            $repo = $parts[1];
+
+            $base = $parsed['scheme'].'://'.$parsed['host'];
+            if (isset($parsed['port'])) {
+                $base .= ':'.$parsed['port'];
+            }
+
+            $hooksApi = $base.'/api/v1/repos/'.rawurlencode($owner).'/'.rawurlencode($repo).'/hooks';
+
+            $hookEndpoint = rtrim(BASE_URL, '/').'/plugins/gitealistener/hook';
+
+            $payload = [
+                'type' => 'gitea',
+                'config' => [
+                    'url' => $hookEndpoint,
+                    'content_type' => 'json',
+                    'secret' => $hookSecret,
+                ],
+                'events' => ['push'],
+                'active' => true,
+            ];
+
+            $ch = curl_init($hooksApi);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'Authorization: token '.$accessToken,
+                'User-Agent: Leantime-GiteaListener/1.0',
+            ]);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+
+            $resp = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlErr = curl_error($ch);
+            curl_close($ch);
+
+            if ($resp === false) {
+                throw new \Exception('Failed to create hook: '.$curlErr);
+            }
+
+            $body = @json_decode($resp, true);
+            if (! (is_array($body) && isset($body['id'])) || $httpCode < 200 || $httpCode >= 300) {
+                $msg = 'Gitea API returned HTTP '.$httpCode;
+                if (is_array($body) && isset($body['message'])) {
+                    $msg .= ': '.$body['message'];
+                }
+                throw new \Exception($msg);
+            }
+
+            $hookId = (int)$body['id'];
+
+        } catch (\Throwable $e) {
+            Log::error('Failed to create Gitea webhook: '.$e->getMessage());
+            $this->tpl->setNotification('Failed to create Gitea webhook: '.$e->getMessage(), 'error');
+            // Do not save configuration if webhook creation failed
+            return Frontcontroller::redirect(BASE_URL.'/plugins/gitealistener/settings');
+        }
+
+        // If we reach here webhook creation succeeded. Now save configuration with hook_id and hook_secret.
         $data = [
             'repository_url' => $repositoryUrl,
             'repository_access_token' => $accessToken,
-            'hook_id' => 0,
+            'hook_id' => $hookId,
             'hook_secret' => $hookSecret,
             'branch_filter' => $branchFilter,
         ];
@@ -89,13 +166,64 @@ class Settings extends Controller
         try {
             $savedId = $this->repository->save($data);
             if ($savedId === null) {
-                $this->tpl->setNotification('Failed to save configuration.', 'error');
-            } else {
-                $this->tpl->setNotification('Gitea listener configuration saved.', 'success', 'gitea_config_saved');
+                // attempt to delete created webhook to avoid orphaned hooks
+                try {
+                    $deleteUrl = $hooksApi.'/'.$hookId;
+                    $ch2 = curl_init($deleteUrl);
+                    curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch2, CURLOPT_CUSTOMREQUEST, 'DELETE');
+                    curl_setopt($ch2, CURLOPT_HTTPHEADER, [
+                        'Accept: application/json',
+                        'Authorization: token '.$accessToken,
+                        'User-Agent: Leantime-GiteaListener/1.0',
+                    ]);
+                    curl_setopt($ch2, CURLOPT_TIMEOUT, 8);
+                    curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER, true);
+                    $dresp = curl_exec($ch2);
+                    $dcode = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+                    $derr = curl_error($ch2);
+                    curl_close($ch2);
+                    if ($dresp === false || $dcode < 200 || $dcode >= 300) {
+                        Log::warning('Failed to delete orphaned Gitea hook '.$hookId.': HTTP '.$dcode.' err: '.$derr.' resp: '.substr((string)$dresp, 0, 200));
+                    }
+                } catch (\Throwable $_) {
+                    Log::warning('Exception while deleting orphaned hook: ' . $_->getMessage());
+                }
+
+                $this->tpl->setNotification('Failed to save configuration after webhook creation.', 'error');
+                return Frontcontroller::redirect(BASE_URL.'/plugins/gitealistener/settings');
             }
+
+            $this->tpl->setNotification('Gitea listener configuration saved and webhook created.', 'success', 'gitea_config_saved');
+
         } catch (\Throwable $e) {
             Log::error('Error saving Gitea Listener configuration: '.$e->getMessage());
+            // Try to delete created webhook to avoid orphaned hooks
+            try {
+                $deleteUrl = $hooksApi.'/'.$hookId;
+                $ch2 = curl_init($deleteUrl);
+                curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch2, CURLOPT_CUSTOMREQUEST, 'DELETE');
+                curl_setopt($ch2, CURLOPT_HTTPHEADER, [
+                    'Accept: application/json',
+                    'Authorization: token '.$accessToken,
+                    'User-Agent: Leantime-GiteaListener/1.0',
+                ]);
+                curl_setopt($ch2, CURLOPT_TIMEOUT, 8);
+                curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER, true);
+                $dresp = curl_exec($ch2);
+                $dcode = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+                $derr = curl_error($ch2);
+                curl_close($ch2);
+                if ($dresp === false || $dcode < 200 || $dcode >= 300) {
+                    Log::warning('Failed to delete orphaned Gitea hook after save error '.$hookId.': HTTP '.$dcode.' err: '.$derr.' resp: '.substr((string)$dresp, 0, 200));
+                }
+            } catch (\Throwable $_) {
+                Log::warning('Exception while deleting orphaned hook after save error: ' . $_->getMessage());
+            }
+
             $this->tpl->setNotification('Error saving configuration: '.$e->getMessage(), 'error');
+            return Frontcontroller::redirect(BASE_URL.'/plugins/gitealistener/settings');
         }
 
         return Frontcontroller::redirect(BASE_URL.'/plugins/gitealistener/settings');
