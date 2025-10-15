@@ -16,13 +16,12 @@
         <div style="margin-bottom: 20px;">
             <a class="btn" href="/plugins/myapps">Back</a>
         </div>
-
-        <h3>Saved webhook configurations</h3>
+        <h3 style="margin-bottom: 10px;">Saved webhook configurations</h3>
 
         <?php if (count($configs) === 0): ?>
             <div class="well">No configurations saved yet.</div>
         <?php else: ?>
-            <table class="table table-striped" id="gitea-config-table">
+            <table class="table table-striped table-responsive" id="gitea-config-table">
                 <thead>
                     <tr>
                         <th>ID</th>
@@ -58,7 +57,7 @@
 
         <hr />
 
-        <h3>Add webhook configuration</h3>
+        <h3 style="margin-bottom: 10px;">Add webhook configuration</h3>
 
         <form method="post" action="/plugins/gitealistener/settings"  id="gitea-config-form">
             <div class="form-group">
@@ -76,10 +75,10 @@
                 <input type="text" name="branch_filter" id="branch-filter" class="form-control" placeholder="e.g. master or * for all branches" value="*" />
             </div>
 
-            <div class="form-group">
-                <button type="button" id="test-connection" class="btn btn-secondary">Test connection</button>
+            <div  class="form-group" style="margin-top: 10px;">
+                <button type="button" id="test-connection" class="btn">Test connection</button>
                 <span id="test-spinner" style="display:none; margin-left:8px;"><i class="fa fa-spinner fa-spin"></i></span>
-                <button type="submit" class="btn btn-primary">Save</button>
+                <button type="submit" class="btn btn-success">Save</button>
             </div>
         </form>
 
