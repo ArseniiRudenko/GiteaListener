@@ -4,6 +4,7 @@ namespace Leantime\Plugins\GiteaListener\Controllers;
 
 use Leantime\Core\Controller\Controller;
 use Leantime\Plugins\GiteaListener\Repositories\GiteaListenerRepository;
+use Leantime\Plugins\GiteaListener\Repositories\TicketHistoryRepository;
 use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Facades\Log;
 
@@ -11,9 +12,12 @@ class Hook extends Controller
 {
     private GiteaListenerRepository $repository;
 
-    public function init(GiteaListenerRepository $repository): void
+    private TicketHistoryRepository $ticketHistoryRepository;
+
+    public function init(GiteaListenerRepository $repository, TicketHistoryRepository $ticketHistoryRepository ): void
     {
         $this->repository = $repository;
+        $this->ticketHistoryRepository = $ticketHistoryRepository;
     }
 
     /**
@@ -161,14 +165,72 @@ class Hook extends Controller
             }
         }
 
-        // Build response
-        $resp = [
-            'success' => true,
-            'branch' => $branch,
-            'commit_sha' => $commitSha,
-            'commit_message' => $commitMessage,
-            'commit_link' => $commitLink,
-        ];
+        // Determine commit author and try to resolve to a Leantime user id
+        $authorUsername = '';
+        $authorName = '';
+        $authorEmail = '';
+
+        if (!empty($payload['pusher']) && is_array($payload['pusher'])) {
+            $authorUsername = $payload['pusher']['username'] ?? ($payload['pusher']['login'] ?? ($payload['pusher']['name'] ?? ''));
+            $authorName = $payload['pusher']['full_name'] ?? ($payload['pusher']['fullname'] ?? ($payload['pusher']['name'] ?? ''));
+            $authorEmail = $payload['pusher']['email'] ?? $authorEmail;
+        }
+        if ($authorUsername === '' && !empty($payload['sender']) && is_array($payload['sender'])) {
+            $authorUsername = $payload['sender']['login'] ?? ($payload['sender']['username'] ?? '');
+            if ($authorName === '') {
+                $authorName = $payload['sender']['full_name'] ?? ($payload['sender']['fullname'] ?? ($payload['sender']['name'] ?? ''));
+            }
+            if ($authorEmail === '' && !empty($payload['sender']['email'])) {
+                $authorEmail = $payload['sender']['email'];
+            }
+        }
+        // Try author from commits
+        if ($authorName === '' || $authorUsername === '' || $authorEmail === '') {
+            $ac = $payload['head_commit']['author'] ?? null;
+            if (is_array($ac)) {
+                if ($authorUsername === '') $authorUsername = $ac['username'] ?? '';
+                if ($authorName === '') $authorName = $ac['name'] ?? '';
+                if ($authorEmail === '') $authorEmail = $ac['email'] ?? '';
+            } elseif (!empty($payload['commits']) && is_array($payload['commits'])) {
+                $firstCommit = $payload['commits'][0] ?? null;
+                if (is_array($firstCommit) && !empty($firstCommit['author']) && is_array($firstCommit['author'])) {
+                    $a = $firstCommit['author'];
+                    if ($authorUsername === '') $authorUsername = $a['username'] ?? '';
+                    if ($authorName === '') $authorName = $a['name'] ?? '';
+                    if ($authorEmail === '') $authorEmail = $a['email'] ?? '';
+                }
+            }
+        }
+
+        $userId = 0; // default to system/unknown user
+        try {
+            $uid = null;
+            // Try by username first
+            if ($authorUsername !== '') {
+                $uid = $this->ticketHistoryRepository->GetUserIdByEmail($authorUsername);
+            }
+            // Then try by email (best unique identifier)
+            if ($uid === null && $authorEmail !== '') {
+                $uid = $this->ticketHistoryRepository->GetUserIdByEmail($authorEmail);
+            }
+            // Then by full name exact
+            if ($uid === null && $authorName !== '') {
+                $uid = $this->ticketHistoryRepository->GetUserIdByFullName($authorName);
+            }
+            // Finally, best-effort partial name (prioritize surname)
+            if ($uid === null && $authorName !== '') {
+                $uid = $this->ticketHistoryRepository->GetUserIdByPartialName($authorName);
+            }
+
+            // as a last ditch try to match username against names
+            if ($uid === null && $authorUsername !== '') {
+                $uid = $this->ticketHistoryRepository->GetUserIdByPartialName($authorUsername);
+            }
+
+            if (is_int($uid)) { $userId = $uid; }
+        } catch (\Throwable $e) {
+            Log::warning('GiteaListener Hook: could not resolve author to user id: '.$e->getMessage());
+        }
 
         //parse branch and commit message for ticket references (#123), check tickets and insert into zp_tickethistory
         try {
@@ -192,55 +254,31 @@ class Hook extends Controller
             $ticketIds = array_values(array_unique(array_filter(array_map('intval', $matches))));
 
             if (!empty($ticketIds)) {
-                $db = app()->make(\Leantime\Core\Db\Db::class);
-                $pdo = $db->database;
-
-                $linked = [];
-                $errors = [];
-
                 foreach ($ticketIds as $ticketId) {
                     try {
                         // Check if ticket exists
-                        $sql = 'SELECT id FROM zp_tickets WHERE id = :id LIMIT 1';
-                        $st = $pdo->prepare($sql);
-                        $st->execute([':id' => $ticketId]);
-                        $found = $st->fetch(\PDO::FETCH_ASSOC);
-                        $st->closeCursor();
+                        $found = $this->ticketHistoryRepository->TicketExists($ticketId);
 
                         if ($found) {
                             // Insert into zp_tickethistory
-                            $insert = 'INSERT INTO zp_tickethistory (userId, ticketId, changeType, changeValue, dateModified) VALUES (:userId, :ticketId, :changeType, :changeValue, :date)';
-                            $st2 = $pdo->prepare($insert);
-                            $st2->bindValue(':userId', 0, \PDO::PARAM_INT);
-                            $st2->bindValue(':ticketId', $ticketId, \PDO::PARAM_INT);
-                            $st2->bindValue(':changeType', 'commit', \PDO::PARAM_STR);
-                            $st2->bindValue(':changeValue', $commitLink ?: ($commitMessage ?: ''), \PDO::PARAM_STR);
-                            $st2->bindValue(':date', date('Y-m-d H:i:s'), \PDO::PARAM_STR);
-                            $st2->execute();
-                            $st2->closeCursor();
+                            $result = $this->ticketHistoryRepository->AddHistory($ticketId, $userId, 'commit', $commitLink ?: ($commitMessage ?: ''));
 
+                            if (!$result) {
+                                Log::error('GiteaListener Hook: failed to record history for ticket #'.$ticketId);
+                                continue;
+                            }
                             Log::info('GiteaListener Hook: recorded commit for ticket #'.$ticketId.' commit '.$commitSha);
-                            $linked[] = $ticketId;
                         }
                     } catch (\Throwable $e) {
                         Log::error('GiteaListener Hook: error writing history for ticket #'.$ticketId.': '.$e->getMessage());
-                        $errors[$ticketId] = $e->getMessage();
                     }
-                }
-
-                if (!empty($linked)) {
-                    $resp['tickets_linked'] = $linked;
-                }
-                if (!empty($errors)) {
-                    $resp['ticket_errors'] = $errors;
                 }
             }
         } catch (\Throwable $e) {
             Log::error('GiteaListener Hook: error while processing ticket linking: '.$e->getMessage());
-            $resp['ticket_error'] = $e->getMessage();
         }
 
-        return new Response(json_encode($resp), 200, ['Content-Type' => 'application/json']);
+        return new Response(null,200, ['Content-Type' => 'application/json']);
     }
 }
 

@@ -1,21 +1,18 @@
 <?php
 
 namespace Leantime\Plugins\GiteaListener\Repositories;
-
-use Illuminate\Contracts\Container\BindingResolutionException;
+use Illuminate\Support\Facades\Log;
 use Leantime\Core\Db\Db;
 
 class GiteaListenerRepository {
 
     private Db $db;
 
-    /**
-     * @throws BindingResolutionException
-     */
+
     public function __construct()
     {
         // Get DB Instance
-        $this->db = app()->make(Db::class);
+        $this->db = app(Db::class);
     }
 
     public function setup():void
@@ -216,6 +213,23 @@ class GiteaListenerRepository {
     }
 
     /**
+     * Update branch_filter, hook_id and hook_secret for a configuration by id
+     */
+    public function updateHookAndFilter(int $id, string $branchFilter, int $hookId, string $hookSecret): bool
+    {
+        $conn = $this->db->getConnection();
+        $pdo = $conn->getPdo();
+
+        // @phpstan-ignore-next-line - table may not be visible to static analyzer
+        $sql = "UPDATE gitea_config SET branch_filter = :bf, hook_id = :hook_id, hook_secret = :hook_secret WHERE id = :id";
+        $st = $pdo->prepare($sql);
+        $ok = $st->execute([':bf' => $branchFilter, ':hook_id' => $hookId, ':hook_secret' => $hookSecret, ':id' => $id]);
+        $st->closeCursor();
+
+        return (bool)$ok;
+    }
+
+    /**
      * Insert or replace a configuration.
      * If a config with the same repository_url exists it will be removed first and a new row will be inserted.
      *
@@ -273,7 +287,10 @@ class GiteaListenerRepository {
 
             return $lastId > 0 ? $lastId : null;
         } catch (\Throwable $e) {
-            try { $pdo->rollBack(); } catch (\Throwable $_) {}
+            Log::error($e);
+            try { $pdo->rollBack(); } catch (\Throwable $e1) {
+                Log::error($e1);
+            }
             return null;
         }
     }
