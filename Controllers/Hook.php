@@ -14,7 +14,7 @@ class Hook extends Controller
 
     private TicketHistoryRepository $ticketHistoryRepository;
 
-    public function init(GiteaListenerRepository $repository, TicketHistoryRepository $ticketHistoryRepository ): void
+    public function init(GiteaListenerRepository $repository, TicketHistoryRepository $ticketHistoryRepository): void
     {
         $this->repository = $repository;
         $this->ticketHistoryRepository = $ticketHistoryRepository;
@@ -45,7 +45,10 @@ class Hook extends Controller
         $signature = null;
         foreach ($sigHeaders as $h) {
             $v = $this->incomingRequest->headers->get($h);
-            if (!empty($v)) { $signature = $v; break; }
+            if (!empty($v)) {
+                $signature = $v;
+                break;
+            }
         }
 
         // decode JSON
@@ -77,16 +80,20 @@ class Hook extends Controller
         if ($matched === null && isset($payload['repository'])) {
             $repoInfo = $payload['repository'];
             $repoUrls = [];
-            foreach (['html_url','url','clone_url','git_http_url','ssh_url'] as $k) {
-                if (!empty($repoInfo[$k])) $repoUrls[] = (string)$repoInfo[$k];
+            foreach (['html_url', 'url', 'clone_url', 'git_http_url', 'ssh_url'] as $k) {
+                if (!empty($repoInfo[$k])) {
+                    $repoUrls[] = (string) $repoInfo[$k];
+                }
             }
 
             foreach ($configs as $cfg) {
                 foreach ($repoUrls as $u) {
-                    if ($u === '') continue;
+                    if ($u === '') {
+                        continue;
+                    }
                     // compare normalized urls (strip .git)
-                    $a = preg_replace('/\.git$/','', rtrim($u, '/'));
-                    $b = preg_replace('/\.git$/','', rtrim($cfg['repository_url'] ?? '', '/'));
+                    $a = preg_replace('/\.git$/', '', rtrim($u, '/'));
+                    $b = preg_replace('/\.git$/', '', rtrim($cfg['repository_url'] ?? '', '/'));
                     if ($a === $b || str_contains($a, $b) || str_contains($b, $a)) {
                         $matched = $cfg;
                         break 2;
@@ -152,15 +159,17 @@ class Hook extends Controller
                 if ($count >= 2) {
                     $owner = $parts[$count-2];
                     $repo = $parts[$count-1];
-                    $base = $parsed['scheme'].'://'.$parsed['host'];
-                    if (isset($parsed['port'])) $base .= ':'.$parsed['port'];
+                    $base = $parsed['scheme'] . '://' . $parsed['host'];
+                    if (isset($parsed['port'])) {
+                        $base .= ':' . $parsed['port'];
+                    }
                     // account for subpath installations where path includes app prefix
                     $prefix = '';
                     if ($count > 2) {
                         $prefix = implode('/', array_slice($parts, 0, $count-2));
-                        $prefix = '/'.$prefix;
+                        $prefix = '/' . $prefix;
                     }
-                    $commitLink = rtrim($base, '/').$prefix.'/'.rawurlencode($owner).'/'.rawurlencode($repo).'/commit/'.rawurlencode($commitSha);
+                    $commitLink = rtrim($base, '/') . $prefix . '/' . rawurlencode($owner) . '/' . rawurlencode($repo) . '/commit/' . rawurlencode($commitSha);
                 }
             }
         }
@@ -222,14 +231,16 @@ class Hook extends Controller
                 $uid = $this->ticketHistoryRepository->GetUserIdByPartialName($authorName);
             }
 
-            // as a last ditch try to match username against names
+            // as a last ditch, try to match username against names
             if ($uid === null && $authorUsername !== '') {
                 $uid = $this->ticketHistoryRepository->GetUserIdByPartialName($authorUsername);
             }
 
-            if (is_int($uid)) { $userId = $uid; }
+            if (is_int($uid)) {
+                $userId = $uid;
+            }
         } catch (\Throwable $e) {
-            Log::warning('GiteaListener Hook: could not resolve author to user id: '.$e->getMessage());
+            Log::warning('GiteaListener Hook: could not resolve author to user id: ' . $e->getMessage());
         }
 
         //parse branch and commit message for ticket references (#123), check tickets and insert into zp_tickethistory
@@ -239,14 +250,18 @@ class Hook extends Controller
             // find all #number in commit message
             if (!empty($commitMessage)) {
                 if (preg_match_all('/#(\d+)/', $commitMessage, $m)) {
-                    foreach ($m[1] as $num) $matches[] = (int)$num;
+                    foreach ($m[1] as $num) {
+                        $matches[] = (int) $num;
+                    }
                 }
             }
 
             // find all #number in branch
             if (!empty($branch)) {
                 if (preg_match_all('/#(\d+)/', $branch, $m2)) {
-                    foreach ($m2[1] as $num) $matches[] = (int)$num;
+                    foreach ($m2[1] as $num) {
+                        $matches[] = (int) $num;
+                    }
                 }
             }
 
@@ -264,21 +279,21 @@ class Hook extends Controller
                             $result = $this->ticketHistoryRepository->AddHistory($ticketId, $userId, 'commit', $commitLink ?: ($commitMessage ?: ''));
 
                             if (!$result) {
-                                Log::error('GiteaListener Hook: failed to record history for ticket #'.$ticketId);
+                                Log::error('GiteaListener Hook: failed to record history for ticket #' . $ticketId);
                                 continue;
                             }
-                            Log::info('GiteaListener Hook: recorded commit for ticket #'.$ticketId.' commit '.$commitSha);
+                            Log::info('GiteaListener Hook: recorded commit for ticket #' . $ticketId . ' commit ' . $commitSha);
                         }
                     } catch (\Throwable $e) {
-                        Log::error('GiteaListener Hook: error writing history for ticket #'.$ticketId.': '.$e->getMessage());
+                        Log::error('GiteaListener Hook: error writing history for ticket #' . $ticketId . ': ' . $e->getMessage());
                     }
                 }
             }
         } catch (\Throwable $e) {
-            Log::error('GiteaListener Hook: error while processing ticket linking: '.$e->getMessage());
+            Log::error('GiteaListener Hook: error while processing ticket linking: ' . $e->getMessage());
         }
 
-        return new Response(null,200, ['Content-Type' => 'application/json']);
+        return new Response(null, 200, ['Content-Type' => 'application/json']);
     }
 }
 
