@@ -54,7 +54,7 @@ class Settings extends Controller
     {
         $p = $this->parseRepoParts($repositoryUrl);
         $hooksApi = $p['base'].'/api/v1/repos/'.rawurlencode($p['owner']).'/'.rawurlencode($p['repo']).'/hooks';
-        $hookEndpoint = rtrim(BASE_URL, '/').'/plugins/gitealistener/hook';
+        $hookEndpoint = rtrim(BASE_URL, '/').'/GiteaListener/hook';
         $payload = [
             'type' => 'gitea',
             'config' => [
@@ -165,12 +165,12 @@ class Settings extends Controller
         // Basic validation
         if ($repositoryUrl === '' || filter_var($repositoryUrl, FILTER_VALIDATE_URL) === false) {
             $this->tpl->setNotification('Repository URL is required and must be a valid URL.', 'error');
-            return Frontcontroller::redirect(BASE_URL.'/plugins/gitealistener/settings');
+            return Frontcontroller::redirect(BASE_URL.'/GiteaListener/settings');
         }
 
         if ($accessToken === '') {
             $this->tpl->setNotification('Repository access token is required.', 'error');
-            return Frontcontroller::redirect(BASE_URL.'/plugins/gitealistener/settings');
+            return Frontcontroller::redirect(BASE_URL.'/GiteaListener/settings');
         }
 
         // Generate hook secret to use when creating the webhook
@@ -188,7 +188,7 @@ class Settings extends Controller
             Log::error('Failed to create Gitea webhook: '.$e->getMessage());
             $this->tpl->setNotification('Failed to create Gitea webhook: '.$e->getMessage(), 'error');
             // Do not save configuration if webhook creation failed
-            return Frontcontroller::redirect(BASE_URL.'/plugins/gitealistener/settings');
+            return Frontcontroller::redirect(BASE_URL.'/GiteaListener/settings');
         }
 
         // If we reach here webhook creation succeeded. Now save configuration with hook_id and hook_secret.
@@ -208,7 +208,7 @@ class Settings extends Controller
 
 
                 $this->tpl->setNotification('Failed to save configuration after webhook creation.', 'error');
-                return Frontcontroller::redirect(BASE_URL.'/plugins/gitealistener/settings');
+                return Frontcontroller::redirect(BASE_URL.'/GiteaListener/settings');
             }
 
             $this->tpl->setNotification('Gitea listener configuration saved and webhook created.', 'success', 'gitea_config_saved');
@@ -223,10 +223,10 @@ class Settings extends Controller
             }
 
             $this->tpl->setNotification('Error saving configuration: '.$e->getMessage(), 'error');
-            return Frontcontroller::redirect(BASE_URL.'/plugins/gitealistener/settings');
+            return Frontcontroller::redirect(BASE_URL.'/GiteaListener/settings');
         }
 
-        return Frontcontroller::redirect(BASE_URL.'/plugins/gitealistener/settings');
+        return Frontcontroller::redirect(BASE_URL.'/GiteaListener/settings');
     }
 
     /**
@@ -342,7 +342,7 @@ class Settings extends Controller
             return new Response(json_encode(['success' => false, 'message' => 'Access token is required']), 400, ['Content-Type' => 'application/json']);
         }
 
-        // Build base host and call /api/v1/user to validate token
+        // Build base host and call /api/v1/repos/{owner}/{repo} to validate token
         $parsed = parse_url(rtrim($repositoryUrl, '/'));
         if ($parsed === false || !isset($parsed['scheme']) || !isset($parsed['host'])) {
             return new Response(json_encode(['success' => false, 'message' => 'Could not parse repository URL']), 400, ['Content-Type' => 'application/json']);
@@ -352,8 +352,16 @@ class Settings extends Controller
         if (isset($parsed['port'])) {
             $base .= ':'.$parsed['port'];
         }
+        $path = ltrim($parsed['path'], '/');
+        $path = preg_replace('/\.git$/', '', $path);
+        $parts = explode('/', $path);
+        if (count($parts) < 2) {
+            return new Response(json_encode(['success' => false, 'message' => 'Repository path must contain owner and repo']), 400, ['Content-Type' => 'application/json']);
+        }
+        $owner = $parts[0];
+        $repo = $parts[1];
 
-        $userApi = $base.'/api/v1/user';
+        $userApi = $base.'/api/v1/repos/'.$owner.'/'.$repo;
 
         $headers = [
             'Accept: application/json',
@@ -408,7 +416,7 @@ class Settings extends Controller
      * @param mixed $httpCode
      * @return array
      */
-    public function processResult(bool|string $resp, string $curlErr, mixed $httpCode): array
+    public function processResult(bool|string $resp, string|null $curlErr, mixed $httpCode): array
     {
         if ($resp === false) {
             $result = ['success' => false, 'message' => 'Connection failed: ' . $curlErr];

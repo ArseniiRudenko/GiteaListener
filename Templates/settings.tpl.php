@@ -59,7 +59,7 @@
 
         <h3 class="widgettitle title-light">Add webhook configuration</h3>
 
-        <form method="post" action="/plugins/gitealistener/settings"  class="row-fluid" id="gitea-config-form">
+        <form method="post" action="/GiteaListener/settings"  class="row-fluid" id="gitea-config-form">
             <div class="form-group">
                 <label class="control-label" for="repo-url">Repository URL</label>
                 <input type="url" name="repository_url" id="repo-url" class="form-control" placeholder="https://gitea.example.com/owner/repo" required />
@@ -118,7 +118,7 @@
             body.append('repository_url', url);
             body.append('repository_access_token', token);
 
-            const resp = await fetch('/plugins/gitealistener/test', {
+            const resp = await fetch('/GiteaListener/settings/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: body.toString()
@@ -174,7 +174,7 @@
         updateBtn.disabled = true;
 
         try {
-            const resp = await fetch('/plugins/gitealistener/update', {
+            const resp = await fetch('/GiteaListener/settings/update', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: body.toString()
@@ -204,7 +204,7 @@
         deleteBtn.disabled = true;
 
         try {
-            const resp = await fetch('/plugins/gitealistener/delete', {
+            const resp = await fetch('/GiteaListener/settings/delete', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: body.toString()
