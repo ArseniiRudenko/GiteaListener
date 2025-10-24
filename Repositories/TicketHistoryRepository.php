@@ -16,8 +16,7 @@ class TicketHistoryRepository
 
     public function TicketExists(int $ticketId) : bool
     {
-        $conn = $this->db->getConnection();
-        $pdo = $conn->getPdo();
+        $$pdo = $this->db->pdo();
         $sql = 'SELECT id FROM zp_tickets WHERE id = :id LIMIT 1';
         $st = $pdo->prepare($sql);
         $st->execute([':id' => $ticketId]);
@@ -33,8 +32,7 @@ class TicketHistoryRepository
     {
         $email = is_string($email) ? trim($email) : '';
         if ($email === '') return null;
-        $conn = $this->db->getConnection();
-        $pdo = $conn->getPdo();
+        $pdo = $this->db->pdo();
         $sql = 'SELECT id FROM zp_user WHERE username = :u LIMIT 1';
         $st = $pdo->prepare($sql);
         $st->execute([':u' => $email]);
@@ -58,9 +56,7 @@ class TicketHistoryRepository
         $firstname = $parts[0];
         $lastname = $parts[count($parts)-1];
 
-        $conn = $this->db->getConnection();
-        $pdo = $conn->getPdo();
-
+        $pdo = $this->db->pdo();
         // Case-insensitive comparison using LOWER() and trying both orders
         $sql = 'SELECT id FROM zp_user WHERE (
                     LOWER(firstname) = LOWER(:fn1) AND LOWER(lastname) = LOWER(:ln1)
@@ -93,9 +89,7 @@ class TicketHistoryRepository
         $parts = preg_split('/\s+/', $fullName);
         $firstname = $parts[0] ?? '';
         $lastname = $parts[count($parts)-1] ?? '';
-        $conn = $this->db->getConnection();
-        $pdo = $conn->getPdo();
-
+        $pdo = $this->db->pdo();
         // Prefer matching by lastname if present
         if ($lastname !== '' && $lastname !== $firstname) {
             $sql = 'SELECT id FROM zp_user WHERE lastname = :ln OR lastname LIKE :lnLike LIMIT 1';
@@ -121,8 +115,7 @@ class TicketHistoryRepository
 
     public function AddHistory(int $ticketId, int $userId, string $changeType, string $changeValue) : bool
     {
-        $conn = $this->db->getConnection();
-        $pdo = $conn->getPdo();
+        $pdo = $this->db->pdo();
         $insert = 'INSERT INTO zp_tickethistory (userId, ticketId, changeType, changeValue, dateModified)
                         VALUES (:userId, :ticketId, :changeType, :changeValue, :date)';
         $st2 = $pdo->prepare($insert);

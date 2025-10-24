@@ -17,9 +17,7 @@ class GiteaListenerRepository {
 
     public function setup():void
     {
-        $conn = $this->db->getConnection();
-        $pdo = $conn->getPdo();
-
+        $pdo = $this->db->pdo();
         // Create tables if not exists.
         $sql = "CREATE TABLE IF NOT EXISTS `gitea_config` (
             `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -37,8 +35,7 @@ class GiteaListenerRepository {
 
     public function teardown():void
     {
-        $conn = $this->db->getConnection();
-        $pdo = $conn->getPdo();
+        $pdo = $this->db->pdo();
         // Drop tables.
         $sql = "DROP TABLE IF EXISTS `gitea_config`;";
         $stmn = $pdo->prepare($sql);
@@ -54,9 +51,7 @@ class GiteaListenerRepository {
      */
     public function getAll(): array
     {
-        $conn = $this->db->getConnection();
-        $pdo = $conn->getPdo();
-
+        $pdo = $this->db->pdo();
         // @phpstan-ignore-next-line - table may not be visible to static analyzer
         $sql = "SELECT id, repository_url, repository_access_token, hook_id, hook_secret, branch_filter FROM gitea_config ORDER BY id DESC";
         $st = $pdo->prepare($sql);
@@ -75,9 +70,7 @@ class GiteaListenerRepository {
      */
     public function getByUrl(string $url): ?array
     {
-        $conn = $this->db->getConnection();
-        $pdo = $conn->getPdo();
-
+        $pdo = $this->db->pdo();
         // @phpstan-ignore-next-line - table may not be visible to static analyzer
         $sql = "SELECT id, repository_url, repository_access_token, hook_id, hook_secret, branch_filter FROM gitea_config WHERE repository_url = :url LIMIT 1";
         $st = $pdo->prepare($sql);
@@ -96,9 +89,7 @@ class GiteaListenerRepository {
      */
     public function getById(int $id): ?array
     {
-        $conn = $this->db->getConnection();
-        $pdo = $conn->getPdo();
-
+        $pdo = $this->db->pdo();
         // @phpstan-ignore-next-line - table may not be visible to static analyzer
         $sql = "SELECT id, repository_url, repository_access_token, hook_id, hook_secret, branch_filter FROM gitea_config WHERE id = :id LIMIT 1";
         $st = $pdo->prepare($sql);
@@ -117,9 +108,7 @@ class GiteaListenerRepository {
      */
     public function getByHookSecret(string $secret): ?array
     {
-        $conn = $this->db->getConnection();
-        $pdo = $conn->getPdo();
-
+        $pdo = $this->db->pdo();
         // @phpstan-ignore-next-line - table may not be visible to static analyzer
         $sql = "SELECT id, repository_url, repository_access_token, hook_id, hook_secret, branch_filter FROM gitea_config WHERE hook_secret = :secret LIMIT 1";
         $st = $pdo->prepare($sql);
@@ -138,9 +127,7 @@ class GiteaListenerRepository {
      */
     public function deleteById(int $id): bool
     {
-        $conn = $this->db->getConnection();
-        $pdo = $conn->getPdo();
-
+        $pdo = $this->db->pdo();
         // @phpstan-ignore-next-line - table may not be visible to static analyzer
         $sql = "DELETE FROM gitea_config WHERE id = :id";
         $st = $pdo->prepare($sql);
@@ -158,9 +145,7 @@ class GiteaListenerRepository {
      */
     public function deleteByUrl(string $url): bool
     {
-        $conn = $this->db->getConnection();
-        $pdo = $conn->getPdo();
-
+        $pdo = $this->db->pdo();
         // @phpstan-ignore-next-line - table may not be visible to static analyzer
         $sql = "DELETE FROM gitea_config WHERE repository_url = :url";
         $st = $pdo->prepare($sql);
@@ -179,9 +164,7 @@ class GiteaListenerRepository {
      */
     public function updateBranchFilter(int $id, string $branchFilter): bool
     {
-        $conn = $this->db->getConnection();
-        $pdo = $conn->getPdo();
-
+        $pdo = $this->db->pdo();
         // @phpstan-ignore-next-line - table may not be visible to static analyzer
         $sql = "UPDATE gitea_config SET branch_filter = :bf WHERE id = :id";
         $st = $pdo->prepare($sql);
@@ -200,9 +183,7 @@ class GiteaListenerRepository {
      */
     public function updateHookId(int $id, int $hookId): bool
     {
-        $conn = $this->db->getConnection();
-        $pdo = $conn->getPdo();
-
+        $pdo = $this->db->pdo();
         // @phpstan-ignore-next-line - table may not be visible to static analyzer
         $sql = "UPDATE gitea_config SET hook_id = :hook_id WHERE id = :id";
         $st = $pdo->prepare($sql);
@@ -217,9 +198,7 @@ class GiteaListenerRepository {
      */
     public function updateHookAndFilter(int $id, string $branchFilter, int $hookId, string $hookSecret): bool
     {
-        $conn = $this->db->getConnection();
-        $pdo = $conn->getPdo();
-
+        $pdo = $this->db->pdo();
         // @phpstan-ignore-next-line - table may not be visible to static analyzer
         $sql = "UPDATE gitea_config SET branch_filter = :bf, hook_id = :hook_id, hook_secret = :hook_secret WHERE id = :id";
         $st = $pdo->prepare($sql);
@@ -238,9 +217,7 @@ class GiteaListenerRepository {
      */
     public function save(array $data): ?int
     {
-        $conn = $this->db->getConnection();
-        $pdo = $conn->getPdo();
-
+        $pdo = $this->db->pdo();
         // Normalize values
         $url = $data['repository_url'] ?? '';
         $token = $data['repository_access_token'] ?? '';
